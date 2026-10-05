@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   build-windows-amd64:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
