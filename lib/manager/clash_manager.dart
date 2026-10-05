@@ -49,11 +49,13 @@ class _ClashContainerState extends ConsumerState<ClashManager>
       final windowsAccessControl = Platform.isWindows &&
           ref.read(vpnSettingProvider).accessControl.enable;
       final tunChanged = prev?.tun.enable != next.tun.enable;
+      final modeChanged = prev?.mode != next.mode;
 
       // Process access control rewrites the rule tree, while updateConfig only
-      // patches scalar/TUN listener fields. A Windows TUN on/off transition
-      // therefore needs a full profile apply to add/remove the generated rules.
-      if (windowsAccessControl && tunChanged) {
+      // patches scalar/TUN listener fields. Windows TUN or routing-mode
+      // transitions therefore need a full profile apply to regenerate/remove
+      // the process rules rather than merely changing the core's mode.
+      if (windowsAccessControl && (tunChanged || modeChanged)) {
         globalState.appController.applyProfileDebounce(silence: true);
       } else {
         globalState.appController.updateClashConfigDebounce();
