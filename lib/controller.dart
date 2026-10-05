@@ -1750,15 +1750,14 @@ class AppController {
       for (final path in selected) {
         final value = path.trim();
         if (value.isEmpty) continue;
-        byPath.putIfAbsent(
-          value.toLowerCase(),
-          () => Package(
-            packageName: value,
-            label: basename(value),
-            system: value.toLowerCase().startsWith(r'c:\windows\'),
-            internet: true,
-            lastUpdateTime: 0,
-          ),
+        final key = value.toLowerCase();
+        final running = byPath[key];
+        byPath[key] = Package(
+          packageName: value,
+          label: running?.label ?? basename(value),
+          system: value.toLowerCase().startsWith(r'c:\windows\'),
+          internet: true,
+          lastUpdateTime: 0,
         );
       }
 
