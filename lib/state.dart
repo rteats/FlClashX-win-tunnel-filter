@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flclashx/clash/clash.dart';
 import 'package:flclashx/common/theme.dart';
+import 'package:flclashx/common/windows_process_filter.dart';
 import 'package:flclashx/enum/enum.dart';
 import 'package:flclashx/l10n/l10n.dart';
 import 'package:flclashx/plugins/service.dart';
@@ -733,6 +734,18 @@ class GlobalState {
         rules = [...overrideData.runningRule, ...rules];
       }
     }
+    if (Platform.isWindows) {
+      final accessControl = config.vpnProps.accessControl;
+      rules = applyWindowsProcessAccessControl(
+        rawConfig: rawConfig,
+        enabled: accessControl.enable && realPatchConfig.tun.enable,
+        accessMode: accessControl.mode,
+        selectedPaths: accessControl.currentList,
+        clashMode: realPatchConfig.mode,
+        originalRules: rules,
+      );
+    }
+
     rawConfig["rule"] = rules;
     return rawConfig;
   }
