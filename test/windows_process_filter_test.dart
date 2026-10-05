@@ -9,7 +9,7 @@ void main() {
       rawConfig: config,
       enabled: true,
       accessMode: AccessControlMode.rejectSelected,
-      selectedPaths: [r'C:\\Games\\Steam\\steam.exe'],
+      selectedPaths: [r'C:\Games\Steam\steam.exe'],
       clashMode: Mode.rule,
       originalRules: ['DOMAIN-SUFFIX,example.com,Proxy', 'MATCH,DIRECT'],
     );
@@ -38,7 +38,7 @@ void main() {
       rawConfig: config,
       enabled: true,
       accessMode: AccessControlMode.acceptSelected,
-      selectedPaths: [r'C:\\Program Files\\Browser\\browser.exe'],
+      selectedPaths: [r'C:\Program Files\Browser\browser.exe'],
       clashMode: Mode.rule,
       originalRules: original,
     );
@@ -63,7 +63,7 @@ void main() {
       rawConfig: config,
       enabled: true,
       accessMode: AccessControlMode.acceptSelected,
-      selectedPaths: [r'C:\\Apps\\chat.exe'],
+      selectedPaths: [r'C:\Apps\chat.exe'],
       clashMode: Mode.global,
       originalRules: ['MATCH,Proxy'],
     );
@@ -76,6 +76,20 @@ void main() {
         'MATCH,DIRECT',
       ],
     );
+  });
+
+  test('unusual paths fall back to PROCESS-NAME grammar', () {
+    final config = <String, dynamic>{'mode': 'rule'};
+    final rules = applyWindowsProcessAccessControl(
+      rawConfig: config,
+      enabled: true,
+      accessMode: AccessControlMode.rejectSelected,
+      selectedPaths: [r'C:\Apps (Legacy)\tool.exe'],
+      clashMode: Mode.rule,
+      originalRules: ['MATCH,Proxy'],
+    );
+
+    expect(rules.first, 'PROCESS-NAME,tool.exe,DIRECT');
   });
 
   test('empty selection leaves routing unchanged', () {
