@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
@@ -192,6 +193,72 @@ class Windows {
       return false;
     }
     return true;
+  }
+
+  /// Returns currently running Win32 processes whose executable path can be
+  /// resolved without elevation. The full path is used as the process-filter ID.
+  Future<List<Map<String, String>>> getRunningProcesses() async {
+    const script = r'''
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+Get-CimInstance Win32_Process |
+  Where-Object { $_.ExecutablePath } |
+  ForEach-Object {
+    [PSCustomObject]@{
+      name = $_.Name
+      path = $_.ExecutablePath
+    }
+  } |
+  Sort-Object path -Unique |
+  ConvertTo-Json -Compress
+''';
+
+    try {
+      final result = await Process.run(
+        'powershell.exe',
+        ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      if (result.exitCode != 0) {
+        commonPrint.log(
+          'Windows process enumeration failed: ${result.stderr}',
+        );
+        return [];
+      }
+
+      final output = result.stdout.toString().trim();
+      if (output.isEmpty) return [];
+
+      final decoded = jsonDecode(output);
+      final rows = decoded is List ? decoded : [decoded];
+      final processes = <String, Map<String, String>>{};
+
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final path = row['path']?.toString().trim();
+        if (path == null || path.isEmpty) continue;
+        final name = row['name']?.toString().trim();
+        processes.putIfAbsent(
+          path.toLowerCase(),
+          () => {
+            'name': (name == null || name.isEmpty) ? basename(path) : name,
+            'path': path,
+          },
+        );
+      }
+
+      final resultList = processes.values.toList();
+      resultList.sort(
+        (a, b) => (a['name'] ?? '').toLowerCase().compareTo(
+              (b['name'] ?? '').toLowerCase(),
+            ),
+      );
+      return resultList;
+    } catch (e) {
+      commonPrint.log('Windows process enumeration failed: $e');
+      return [];
+    }
   }
 
   Future<void> _killProcess(int port) async {
