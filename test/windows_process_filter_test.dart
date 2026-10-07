@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flclashx/common/windows.dart';
 import 'package:flclashx/common/windows_process_filter.dart';
@@ -100,10 +101,25 @@ void main() {
     if (!Platform.isWindows) return;
 
     final systemRoot = Platform.environment['SystemRoot'] ?? r'C:\Windows';
-    final notepadPath = '$systemRoot\\System32\\notepad.exe';
-    final icon = await windows!.getExecutableIcon(notepadPath);
+    final candidates = [
+      r'$systemRoot\System32\WindowsPowerShell\v1.0\powershell.exe',
+      r'$systemRoot\System32\cmd.exe',
+      r'$systemRoot\explorer.exe',
+    ];
 
-    expect(icon, isNotNull);
+    Uint8List? icon;
+    for (final executable in candidates) {
+      if (!File(executable).existsSync()) continue;
+      icon = await windows!.getExecutableIcon(executable);
+      if (icon != null) break;
+    }
+
+    expect(
+      icon,
+      isNotNull,
+      reason: 'Windows should expose an associated icon for at least one '
+          'standard shell executable',
+    );
     expect(icon!.length, greaterThan(8));
     expect(
       icon.sublist(0, 8),
