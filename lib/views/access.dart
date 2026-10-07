@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flclashx/common/common.dart';
 import 'package:flclashx/enum/enum.dart';
@@ -106,6 +108,10 @@ class _AccessViewState extends ConsumerState<AccessView> {
         isFilterNonInternetApp: !_showNoInternet,
       ),
     );
+    _dirty = false;
+    if (Platform.isWindows) {
+      globalState.appController.applyProfileDebounce(silence: true);
+    }
   }
 
   void _toggleApp(String pkg) {
@@ -132,8 +138,10 @@ class _AccessViewState extends ConsumerState<AccessView> {
   List<Package> _filter(List<Package> packages) {
     final q = _query.toLowerCase();
     return packages.where((p) {
-      if (!_showSystem && p.system) return false;
-      if (!_showNoInternet && !p.internet) return false;
+      if (!Platform.isWindows) {
+        if (!_showSystem && p.system) return false;
+        if (!_showNoInternet && !p.internet) return false;
+      }
       if (q.isNotEmpty &&
           !p.label.toLowerCase().contains(q) &&
           !p.packageName.toLowerCase().contains(q)) {
@@ -265,24 +273,26 @@ class _AccessViewState extends ConsumerState<AccessView> {
                         horizontal: 16, vertical: 8),
                     child: Row(
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.android),
-                          tooltip: appLocale.systemApp,
-                          isSelected: _showSystem,
-                          onPressed: () => setState(() {
-                            _showSystem = !_showSystem;
-                            _dirty = true;
-                          }),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.wifi_off),
-                          tooltip: appLocale.noNetworkApp,
-                          isSelected: _showNoInternet,
-                          onPressed: () => setState(() {
-                            _showNoInternet = !_showNoInternet;
-                            _dirty = true;
-                          }),
-                        ),
+                        if (!Platform.isWindows) ...[
+                          IconButton(
+                            icon: const Icon(Icons.android),
+                            tooltip: appLocale.systemApp,
+                            isSelected: _showSystem,
+                            onPressed: () => setState(() {
+                              _showSystem = !_showSystem;
+                              _dirty = true;
+                            }),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.wifi_off),
+                            tooltip: appLocale.noNetworkApp,
+                            isSelected: _showNoInternet,
+                            onPressed: () => setState(() {
+                              _showNoInternet = !_showNoInternet;
+                              _dirty = true;
+                            }),
+                          ),
+                        ],
                         const Spacer(),
                         if (_selectedSet.isNotEmpty)
                           TextButton.icon(
@@ -375,18 +385,35 @@ class _AppTile extends StatelessWidget {
             SizedBox(
               width: 48,
               height: 48,
-              child: FutureBuilder<ImageProvider?>(
-                future: app?.getPackageIcon(package.packageName),
-                builder: (_, snap) {
-                  if (snap.data == null) return const SizedBox();
-                  return Image(
-                    image: snap.data!,
-                    gaplessPlayback: true,
-                    width: 48,
-                    height: 48,
-                  );
-                },
-              ),
+              child: Platform.isWindows
+                  ? FutureBuilder<Uint8List?>(
+                      future: windows?.getExecutableIcon(package.packageName),
+                      builder: (_, snap) {
+                        final bytes = snap.data;
+                        if (bytes == null) {
+                          return const Icon(Icons.apps_rounded, size: 32);
+                        }
+                        return Image.memory(
+                          bytes,
+                          gaplessPlayback: true,
+                          width: 48,
+                          height: 48,
+                          filterQuality: FilterQuality.medium,
+                        );
+                      },
+                    )
+                  : FutureBuilder<ImageProvider?>(
+                      future: app?.getPackageIcon(package.packageName),
+                      builder: (_, snap) {
+                        if (snap.data == null) return const SizedBox();
+                        return Image(
+                          image: snap.data!,
+                          gaplessPlayback: true,
+                          width: 48,
+                          height: 48,
+                        );
+                      },
+                    ),
             ),
             const SizedBox(width: 12),
             Expanded(

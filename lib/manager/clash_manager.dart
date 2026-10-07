@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flclashx/clash/clash.dart';
 import 'package:flclashx/common/common.dart';
 import 'package:flclashx/common/file_logger.dart';
@@ -42,7 +44,20 @@ class _ClashContainerState extends ConsumerState<ClashManager>
       }
     });
     ref.listenManual(updateParamsProvider, (prev, next) {
-      if (prev != next) {
+      if (prev == next) return;
+
+      final windowsAccessControl = Platform.isWindows &&
+          ref.read(vpnSettingProvider).accessControl.enable;
+      final tunChanged = prev?.tun.enable != next.tun.enable;
+      final modeChanged = prev?.mode != next.mode;
+
+      // Process access control rewrites the rule tree, while updateConfig only
+      // patches scalar/TUN listener fields. Windows TUN or routing-mode
+      // transitions therefore need a full profile apply to regenerate/remove
+      // the process rules rather than merely changing the core's mode.
+      if (windowsAccessControl && (tunChanged || modeChanged)) {
+        globalState.appController.applyProfileDebounce(silence: true);
+      } else {
         globalState.appController.updateClashConfigDebounce();
       }
     });

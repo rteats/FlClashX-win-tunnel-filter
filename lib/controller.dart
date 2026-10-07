@@ -1726,6 +1726,49 @@ class AppController {
   }
 
   Future<List<Package>> getPackages() async {
+    if (Platform.isWindows) {
+      final rows = await windows?.getRunningProcesses() ?? const [];
+      final byPath = <String, Package>{};
+
+      for (final row in rows) {
+        final path = row['path']?.trim();
+        if (path == null || path.isEmpty) continue;
+        final name = row['name']?.trim();
+        byPath[path.toLowerCase()] = Package(
+          packageName: path,
+          label: (name == null || name.isEmpty) ? basename(path) : name,
+          system: path.toLowerCase().startsWith(r'c:\windows\'),
+          internet: true,
+          lastUpdateTime: 0,
+        );
+      }
+
+      // Keep previously selected executables visible even when they are not
+      // currently running, so users can still remove stale selections.
+      final selected =
+          _ref.read(vpnSettingProvider).accessControl.currentList;
+      for (final path in selected) {
+        final value = path.trim();
+        if (value.isEmpty) continue;
+        final key = value.toLowerCase();
+        final running = byPath[key];
+        byPath[key] = Package(
+          packageName: value,
+          label: running?.label ?? basename(value),
+          system: value.toLowerCase().startsWith(r'c:\windows\'),
+          internet: true,
+          lastUpdateTime: 0,
+        );
+      }
+
+      final packages = byPath.values.toList()
+        ..sort(
+          (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+        );
+      _ref.read(packagesProvider.notifier).value = packages;
+      return packages;
+    }
+
     if (_ref.read(isMobileViewProvider)) {
       await Future.delayed(commonDuration);
     }

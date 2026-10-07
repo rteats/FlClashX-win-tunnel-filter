@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flclashx/common/common.dart';
@@ -24,6 +26,11 @@ class Windows {
   static Windows? _instance;
   late DynamicLibrary _shell32;
   late DynamicLibrary _uxtheme;
+
+  final Map<String, Uint8List> _processIconCache = {};
+  final Set<String> _missingProcessIcons = {};
+  List<String> _knownProcessPaths = const [];
+  Future<void>? _iconLoadFuture;
 
   bool _readThemeValue(String valueName) {
     try {
@@ -192,6 +199,246 @@ class Windows {
       return false;
     }
     return true;
+  }
+
+  /// Returns currently running Win32 processes whose executable path can be
+  /// resolved without elevation. The full path is used as the process-filter ID.
+  Future<List<Map<String, String>>> getRunningProcesses() async {
+    const script = r'''
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+Get-CimInstance Win32_Process |
+  Where-Object { $_.ExecutablePath } |
+  ForEach-Object {
+    [PSCustomObject]@{
+      name = $_.Name
+      path = $_.ExecutablePath
+    }
+  } |
+  Sort-Object path -Unique |
+  ConvertTo-Json -Compress
+''';
+
+    try {
+      final result = await Process.run(
+        'powershell.exe',
+        ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+      );
+      if (result.exitCode != 0) {
+        commonPrint.log(
+          'Windows process enumeration failed: ${result.stderr}',
+        );
+        return [];
+      }
+
+      final output = result.stdout.toString().trim();
+      if (output.isEmpty) return [];
+
+      final decoded = jsonDecode(output);
+      final rows = decoded is List ? decoded : [decoded];
+      final processes = <String, Map<String, String>>{};
+
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final path = row['path']?.toString().trim();
+        if (path == null || path.isEmpty) continue;
+        final name = row['name']?.toString().trim();
+        processes.putIfAbsent(
+          path.toLowerCase(),
+          () => {
+            'name': (name == null || name.isEmpty) ? basename(path) : name,
+            'path': path,
+          },
+        );
+      }
+
+      final resultList = processes.values.toList();
+      resultList.sort(
+        (a, b) => (a['name'] ?? '').toLowerCase().compareTo(
+              (b['name'] ?? '').toLowerCase(),
+            ),
+      );
+      _knownProcessPaths = resultList
+          .map((process) => process['path'])
+          .whereType<String>()
+          .toList(growable: false);
+      _iconLoadFuture = null;
+      return resultList;
+    } catch (e) {
+      commonPrint.log('Windows process enumeration failed: $e');
+      return [];
+    }
+  }
+
+  /// Returns the executable's associated Windows icon as PNG bytes.
+  ///
+  /// Running-process icons are extracted in one PowerShell batch and cached.
+  /// A previously selected executable that is no longer running falls back to
+  /// a single-path extraction, also cached.
+  Future<Uint8List?> getExecutableIcon(String executablePath) async {
+    final path = executablePath.trim();
+    if (path.isEmpty) return null;
+
+    final key = path.toLowerCase();
+    final cached = _processIconCache[key];
+    if (cached != null) return cached;
+    if (_missingProcessIcons.contains(key)) return null;
+
+    if (_knownProcessPaths.any((item) => item.toLowerCase() == key)) {
+      final pending = _iconLoadFuture ??= _loadKnownProcessIcons();
+      try {
+        await pending;
+      } finally {
+        if (identical(_iconLoadFuture, pending)) {
+          _iconLoadFuture = null;
+        }
+      }
+
+      final loaded = _processIconCache[key];
+      if (loaded != null) return loaded;
+      if (_missingProcessIcons.contains(key)) return null;
+    }
+
+    final extracted = await _extractExecutableIcons([path]);
+    if (extracted == null) return null;
+    _storeExtractedIcons([path], extracted);
+    return _processIconCache[key];
+  }
+
+  Future<void> _loadKnownProcessIcons() async {
+    final paths = _knownProcessPaths
+        .where((path) {
+          final key = path.toLowerCase();
+          return !_processIconCache.containsKey(key) &&
+              !_missingProcessIcons.contains(key);
+        })
+        .toSet()
+        .toList();
+
+    if (paths.isEmpty) return;
+
+    final extracted = await _extractExecutableIcons(paths);
+    if (extracted == null) return;
+    _storeExtractedIcons(paths, extracted);
+  }
+
+  void _storeExtractedIcons(
+    List<String> requestedPaths,
+    Map<String, Uint8List> extracted,
+  ) {
+    for (final entry in extracted.entries) {
+      _processIconCache[entry.key.toLowerCase()] = entry.value;
+      _missingProcessIcons.remove(entry.key.toLowerCase());
+    }
+
+    for (final path in requestedPaths) {
+      final key = path.toLowerCase();
+      if (!_processIconCache.containsKey(key)) {
+        _missingProcessIcons.add(key);
+      }
+    }
+  }
+
+  Future<Map<String, Uint8List>?> _extractExecutableIcons(
+    List<String> executablePaths,
+  ) async {
+    if (executablePaths.isEmpty) return {};
+
+    const script = r'''
+$ErrorActionPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+Add-Type -AssemblyName System.Drawing
+
+$json = [System.Text.Encoding]::UTF8.GetString(
+  [System.Convert]::FromBase64String($env:FLCLASHX_ICON_PATHS)
+)
+$paths = @($json | ConvertFrom-Json)
+
+$result = foreach ($path in $paths) {
+  $iconData = $null
+  try {
+    if (Test-Path -LiteralPath $path) {
+      $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($path)
+      if ($null -ne $icon) {
+        $bitmap = $icon.ToBitmap()
+        $stream = New-Object System.IO.MemoryStream
+        try {
+          $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+          $iconData = [System.Convert]::ToBase64String($stream.ToArray())
+        }
+        finally {
+          $stream.Dispose()
+          $bitmap.Dispose()
+          $icon.Dispose()
+        }
+      }
+    }
+  }
+  catch {}
+
+  [PSCustomObject]@{
+    path = $path
+    icon = $iconData
+  }
+}
+
+$result | ConvertTo-Json -Compress
+''';
+
+    final payload = base64Encode(
+      utf8.encode(jsonEncode(executablePaths)),
+    );
+
+    try {
+      final result = await Process.run(
+        'powershell.exe',
+        ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script],
+        stdoutEncoding: utf8,
+        stderrEncoding: utf8,
+        environment: {
+          'FLCLASHX_ICON_PATHS': payload,
+        },
+      );
+
+      if (result.exitCode != 0) {
+        commonPrint.log(
+          'Windows executable icon extraction failed: ${result.stderr}',
+        );
+        return null;
+      }
+
+      final output = result.stdout.toString().trim();
+      if (output.isEmpty) return {};
+
+      final decoded = jsonDecode(output);
+      final rows = decoded is List ? decoded : [decoded];
+      final icons = <String, Uint8List>{};
+
+      for (final row in rows) {
+        if (row is! Map) continue;
+        final path = row['path']?.toString().trim();
+        final icon = row['icon']?.toString().trim();
+        if (path == null ||
+            path.isEmpty ||
+            icon == null ||
+            icon.isEmpty) {
+          continue;
+        }
+
+        try {
+          icons[path] = base64Decode(icon);
+        } catch (_) {
+          // Ignore a malformed icon and keep the generic fallback in the UI.
+        }
+      }
+
+      return icons;
+    } catch (e) {
+      commonPrint.log('Windows executable icon extraction failed: $e');
+      return null;
+    }
   }
 
   Future<void> _killProcess(int port) async {

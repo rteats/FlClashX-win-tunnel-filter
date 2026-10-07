@@ -80,7 +80,7 @@ class _ToolboxViewState extends ConsumerState<ToolsView> {
         const _BackupItem(),
         if (system.isDesktop) const _HotkeyItem(),
         if (Platform.isWindows) const _LoopbackItem(),
-        if (Platform.isAndroid) const _AccessItem(),
+        if (Platform.isAndroid || Platform.isWindows) const _AccessItem(),
         const _ConfigItem(),
         const _SettingItem(),
       ],
