@@ -2,6 +2,19 @@ name: windows-test-build
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "lib/**"
+      - "core/**"
+      - "services/**"
+      - "plugins/**"
+      - "windows/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - "setup.dart"
+      - ".github/workflows/windows-test-build.yaml"
   pull_request:
     paths:
       - "lib/**"
@@ -55,10 +68,10 @@ jobs:
       - name: Build Windows package
         run: dart setup.dart windows --arch amd64
 
-      - name: Upload Windows test build
+      - name: Upload Windows release artifact
         uses: actions/upload-artifact@v6
         with:
           name: FlClashX-windows-amd64-${{ github.sha }}
           path: ./dist
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
