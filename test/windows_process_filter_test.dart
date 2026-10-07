@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flclashx/common/windows.dart';
 import 'package:flclashx/common/windows_process_filter.dart';
 import 'package:flclashx/enum/enum.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -90,6 +93,22 @@ void main() {
     );
 
     expect(rules.first, 'PROCESS-NAME,tool.exe,DIRECT');
+  });
+
+
+  test('Windows executable icon extraction returns PNG', () async {
+    if (!Platform.isWindows) return;
+
+    final systemRoot = Platform.environment['SystemRoot'] ?? r'C:\Windows';
+    final notepadPath = '$systemRoot\\System32\\notepad.exe';
+    final icon = await windows!.getExecutableIcon(notepadPath);
+
+    expect(icon, isNotNull);
+    expect(icon!.length, greaterThan(8));
+    expect(
+      icon.sublist(0, 8),
+      equals([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
   });
 
   test('empty selection leaves routing unchanged', () {
