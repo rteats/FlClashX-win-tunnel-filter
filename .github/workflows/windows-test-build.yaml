@@ -5,16 +5,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "lib/**"
-      - "core/**"
-      - "services/**"
-      - "plugins/**"
-      - "windows/**"
-      - "pubspec.yaml"
-      - "pubspec.lock"
-      - "setup.dart"
-      - ".github/workflows/windows-test-build.yaml"
   pull_request:
     paths:
       - "lib/**"
