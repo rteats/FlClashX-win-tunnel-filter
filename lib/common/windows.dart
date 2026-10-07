@@ -404,7 +404,7 @@ $result | ConvertTo-Json -Compress
 
       if (result.exitCode != 0) {
         commonPrint.log(
-          'Windows executable icon extraction failed: \${result.stderr}',
+          'Windows executable icon extraction failed: ${result.stderr}',
         );
         return null;
       }
