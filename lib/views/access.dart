@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flclashx/common/common.dart';
 import 'package:flclashx/enum/enum.dart';
@@ -385,7 +386,22 @@ class _AppTile extends StatelessWidget {
               width: 48,
               height: 48,
               child: Platform.isWindows
-                  ? const Icon(Icons.apps_rounded, size: 32)
+                  ? FutureBuilder<Uint8List?>(
+                      future: windows?.getExecutableIcon(package.packageName),
+                      builder: (_, snap) {
+                        final bytes = snap.data;
+                        if (bytes == null) {
+                          return const Icon(Icons.apps_rounded, size: 32);
+                        }
+                        return Image.memory(
+                          bytes,
+                          gaplessPlayback: true,
+                          width: 48,
+                          height: 48,
+                          filterQuality: FilterQuality.medium,
+                        );
+                      },
+                    )
                   : FutureBuilder<ImageProvider?>(
                       future: app?.getPackageIcon(package.packageName),
                       builder: (_, snap) {
