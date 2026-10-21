@@ -1,18 +1,27 @@
-import 'package:flclashx/enum/enum.dart';
+import 'package:fl_clash/enum/enum.dart';
 import 'package:path/path.dart' as p;
+
+const windowsProcessAccessConfigKey = '__flclashx_windows_process_access';
+
+bool isWindowsProcessPattern(String value) =>
+    value.contains('*') || value.contains('?');
+
+String windowsProcessEntryLabel(String value) {
+  final label = p.windows.basename(value.trim());
+  return label.isEmpty ? value.trim() : label;
+}
 
 /// Applies Windows process-based access control to a Mihomo runtime config.
 ///
-/// This intentionally changes only Mihomo routing. Selected processes still
-/// enter the TUN adapter; blacklist mode sends them DIRECT once Mihomo has
-/// identified the originating executable.
-List<dynamic> applyWindowsProcessAccessControl({
+/// Exact paths use PROCESS-PATH. Entries containing `*` or `?` use Mihomo's
+/// native PROCESS-PATH-WILDCARD matcher.
+List<String> applyWindowsProcessAccessControl({
   required Map<String, dynamic> rawConfig,
   required bool enabled,
   required AccessControlMode accessMode,
   required List<String> selectedPaths,
   required Mode clashMode,
-  required List<dynamic> originalRules,
+  required List<String> originalRules,
 }) {
   final selected = selectedPaths
       .map((path) => path.trim())
@@ -21,15 +30,15 @@ List<dynamic> applyWindowsProcessAccessControl({
       .toList();
 
   if (!enabled || selected.isEmpty || clashMode == Mode.direct) {
-    return List<dynamic>.from(originalRules);
+    return List<String>.from(originalRules);
   }
 
   rawConfig['find-process-mode'] = FindProcessMode.always.name;
   final matchers = selected.map(_processMatcher).toList();
 
   if (clashMode == Mode.global) {
-    // Global mode bypasses the rule engine, so reproduce its semantics in rule
-    // mode while inserting the process filter.
+    // Global mode bypasses rules, so reproduce it in rule mode while inserting
+    // the process access-control rules.
     rawConfig['mode'] = Mode.rule.name;
     if (accessMode == AccessControlMode.rejectSelected) {
       return [
@@ -50,8 +59,8 @@ List<dynamic> applyWindowsProcessAccessControl({
     ];
   }
 
-  // Whitelist mode must let selected processes continue through the profile's
-  // original rule set while every other process goes DIRECT.
+  // Whitelist mode lets selected processes continue through the original
+  // profile rule tree and sends every other process DIRECT.
   final existingSubRules = rawConfig['sub-rules'];
   final subRules = <String, dynamic>{};
   if (existingSubRules is Map) {
@@ -66,7 +75,7 @@ List<dynamic> applyWindowsProcessAccessControl({
     key = '__flclashx_windows_access_${suffix++}';
   }
 
-  subRules[key] = List<dynamic>.from(originalRules);
+  subRules[key] = List<String>.from(originalRules);
   rawConfig['sub-rules'] = subRules;
 
   return [
@@ -75,10 +84,55 @@ List<dynamic> applyWindowsProcessAccessControl({
   ];
 }
 
+List<String> applyWindowsProcessAccessPayload({
+  required Map<String, dynamic> rawConfig,
+  required Object? payload,
+  required Mode clashMode,
+  required List<String> originalRules,
+}) {
+  if (payload is! Map) {
+    return List<String>.from(originalRules);
+  }
+
+  final modeName = payload['mode']?.toString();
+  AccessControlMode? accessMode;
+  for (final mode in AccessControlMode.values) {
+    if (mode.name == modeName) {
+      accessMode = mode;
+      break;
+    }
+  }
+  final paths = switch (payload['paths']) {
+    final List values => values.map((value) => value.toString()).toList(),
+    _ => <String>[],
+  };
+
+  if (accessMode == null) {
+    return List<String>.from(originalRules);
+  }
+
+  return applyWindowsProcessAccessControl(
+    rawConfig: rawConfig,
+    enabled: payload['enabled'] == true,
+    accessMode: accessMode,
+    selectedPaths: paths,
+    clashMode: clashMode,
+    originalRules: originalRules,
+  );
+}
+
 String _processMatcher(String executablePath) {
-  // Clash rules are comma-delimited and SUB-RULE wraps the matcher in
-  // parentheses. Fall back to the executable name for unusual paths that
-  // would make that grammar ambiguous.
+  if (isWindowsProcessPattern(executablePath)) {
+    // Commas delimit Clash rule fields. If a path contains one, retain useful
+    // wildcard behavior by matching only the executable name.
+    if (executablePath.contains(',')) {
+      return 'PROCESS-NAME-WILDCARD,${p.windows.basename(executablePath)}';
+    }
+    return 'PROCESS-PATH-WILDCARD,$executablePath';
+  }
+
+  // SUB-RULE wraps the matcher in parentheses. Keep the conservative fallback
+  // used by the previous Windows implementation for ambiguous exact paths.
   if (executablePath.contains(',') ||
       executablePath.contains('(') ||
       executablePath.contains(')')) {
