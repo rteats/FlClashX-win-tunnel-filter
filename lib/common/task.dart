@@ -125,6 +125,7 @@ String _localPath(Object? value) {
 
 Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
   final rawConfig = Map.from(data.rawConfig);
+  final windowsProcessAccess = rawConfig.remove(windowsProcessAccessConfigKey);
   final realPatchConfig = data.realPatchConfig;
   final profilesPath = data.profilesPath;
   final profileId = data.profileId;
@@ -388,6 +389,12 @@ Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
         .map((item) => item.definition)
         .toList();
   }
+  rules = applyWindowsProcessAccessPayload(
+    rawConfig: rawConfig,
+    payload: windowsProcessAccess,
+    clashMode: realPatchConfig.mode,
+    originalRules: rules,
+  );
   rawConfig['rules'] = rules;
   final yaml = await _encodeYaml(Map<String, dynamic>.from(rawConfig));
   return (yaml: yaml, md5: yaml.toMd5(), counts: configCountsOf(rawConfig));
