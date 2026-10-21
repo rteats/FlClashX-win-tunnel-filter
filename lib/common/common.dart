@@ -52,4 +52,6 @@ export 'system_fonts.dart';
 export 'task.dart';
 export 'task_pool.dart';
 export 'webdav.dart';
+export 'windows_process_filter.dart';
+export 'windows_processes.dart';
 export 'yaml.dart';
