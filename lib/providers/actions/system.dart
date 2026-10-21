@@ -164,6 +164,13 @@ class SystemAction extends _$SystemAction {
     ref
         .read(patchClashConfigProvider.notifier)
         .update((state) => state.copyWith.tun(enable: !state.tun.enable));
+
+    final accessControl = ref.read(vpnSettingProvider).accessControlProps;
+    if (system.isWindows && accessControl.enable && accessControl.hasPackages) {
+      ref
+          .read(setupActionProvider.notifier)
+          .applyProfileDebounce(force: true, silence: true);
+    }
   }
 
   void updateSystemProxy() {
