@@ -35,6 +35,13 @@ class CommonAction extends _$CommonAction {
       final nextIndex = index + 1 > modes.length - 1 ? 0 : index + 1;
       return state.copyWith(mode: modes[nextIndex]);
     });
+
+    final accessControl = ref.read(vpnSettingProvider).accessControlProps;
+    if (system.isWindows && accessControl.enable && accessControl.hasPackages) {
+      ref
+          .read(setupActionProvider.notifier)
+          .applyProfileDebounce(force: true, silence: true);
+    }
   }
 
   Future<void> updateTraffic() async {
