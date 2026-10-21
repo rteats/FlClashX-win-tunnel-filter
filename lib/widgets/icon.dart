@@ -393,11 +393,34 @@ class _PackageIconState extends State<PackageIcon> {
 
   void _showCachedIcon() {
     _generation++;
+    if (system.isWindows) {
+      final bytes = windowsProcessCatalog?.getCachedExecutableIcon(
+        widget.packageName,
+      );
+      _icon = bytes == null ? null : MemoryImage(bytes);
+      return;
+    }
     _icon = app?.getCachedPackageIcon(widget.packageName);
   }
 
   void _loadIcon() {
     final generation = _generation;
+    if (system.isWindows) {
+      windowsProcessCatalog?.getExecutableIcon(widget.packageName).then((
+        bytes,
+      ) {
+        if (!mounted || generation != _generation || bytes == null) {
+          return;
+        }
+        final icon = MemoryImage(bytes);
+        if (icon == _icon) return;
+        setState(() {
+          _icon = icon;
+        });
+      });
+      return;
+    }
+
     app?.getPackageIcon(widget.packageName).then((icon) {
       if (!mounted ||
           generation != _generation ||
@@ -415,6 +438,18 @@ class _PackageIconState extends State<PackageIcon> {
   Widget build(BuildContext context) {
     final icon = _icon;
     if (icon == null) {
+      if (system.isWindows) {
+        return SizedBox.square(
+          dimension: widget.size,
+          child: Center(
+            child: GlyphIcon(
+              AppGlyphs.appsList,
+              size: widget.size * 0.62,
+              color: context.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        );
+      }
       return SizedBox(width: widget.size, height: widget.size);
     }
     return Image(
