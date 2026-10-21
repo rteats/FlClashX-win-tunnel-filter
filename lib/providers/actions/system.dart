@@ -10,6 +10,46 @@ class SystemAction extends _$SystemAction {
   void build() {}
 
   Future<List<Package>> getPackages() async {
+    if (system.isWindows) {
+      final rows = await windowsProcessCatalog?.getRunningProcesses() ?? const [];
+      final byPath = <String, Package>{};
+
+      for (final row in rows) {
+        final path = row['path']?.trim();
+        if (path == null || path.isEmpty) continue;
+        final name = row['name']?.trim();
+        byPath[path.toLowerCase()] = Package(
+          packageName: path,
+          label: (name == null || name.isEmpty) ? basename(path) : name,
+          system: false,
+          internet: true,
+          lastUpdateTime: 0,
+        );
+      }
+
+      final selected = ref.read(vpnSettingProvider).accessControlProps.currentList;
+      for (final entry in selected) {
+        final value = entry.trim();
+        if (value.isEmpty) continue;
+        final key = value.toLowerCase();
+        final running = byPath[key];
+        byPath[key] = Package(
+          packageName: value,
+          label: running?.label ?? windowsProcessEntryLabel(value),
+          system: false,
+          internet: true,
+          lastUpdateTime: 0,
+        );
+      }
+
+      final packages = byPath.values.toList()
+        ..sort(
+          (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+        );
+      ref.read(packagesProvider.notifier).value = packages;
+      return packages;
+    }
+
     ref.read(packagesProvider.notifier).value = await app?.getPackages() ?? [];
     return ref.read(packagesProvider);
   }
