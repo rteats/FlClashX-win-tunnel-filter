@@ -124,7 +124,7 @@ String _localPath(Object? value) {
 }
 
 Future<RealProfile> _makeRealProfileTask(MakeRealProfileState data) async {
-  final rawConfig = Map.from(data.rawConfig);
+  final rawConfig = Map<String, dynamic>.from(data.rawConfig);
   final windowsProcessAccess = rawConfig.remove(windowsProcessAccessConfigKey);
   final realPatchConfig = data.realPatchConfig;
   final profilesPath = data.profilesPath;
