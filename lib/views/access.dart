@@ -210,6 +210,77 @@ class _AccessViewState extends ConsumerState<AccessView>
             accessControlProps: _getRealAccessControlProps(accessControl),
           ),
         );
+    if (system.isWindows) {
+      ref
+          .read(setupActionProvider.notifier)
+          .applyProfileDebounce(force: true, silence: true);
+    }
+  }
+
+  Future<void> _handleAddPathPattern() async {
+    if (!system.isWindows) return;
+
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Add path pattern'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText:
+                r'C:\Users\you\AppData\Local\Roblox\Versions\*\RobloxPlayerBeta.exe',
+            helperText: 'Use * for any characters and ? for one character.',
+          ),
+          onSubmitted: (value) =>
+              Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted) return;
+
+    final pattern = value?.trim();
+    if (pattern == null || pattern.isEmpty) return;
+    if (!isWindowsProcessPattern(pattern)) {
+      dialogs.showNotifier(
+        'Path patterns must contain * or ?.',
+        level: MessageLevel.error,
+      );
+      return;
+    }
+
+    ref.read(accessControlStateProvider.notifier).update((state) {
+      final entries = Set<String>.from(state.currentList)..add(pattern);
+      return state.copyWithNewList(entries.toList());
+    });
+
+    final packages = ref.read(packagesProvider);
+    if (!packages.any((item) => item.packageName == pattern)) {
+      ref.read(packagesProvider.notifier).value = [
+        Package(
+          packageName: pattern,
+          label: windowsProcessEntryLabel(pattern),
+          system: false,
+          internet: true,
+          lastUpdateTime: 0,
+        ),
+        ...packages,
+      ];
+    }
+    _pinList();
   }
 
   Future<void> _exportToClipboard() async {
@@ -264,6 +335,11 @@ class _AccessViewState extends ConsumerState<AccessView>
         glyph: AppGlyphs.moreCircle,
         label: appLocalizations.action,
         subItems: [
+          if (system.isWindows)
+            CommonPopupMenuItem(
+              label: 'Add path pattern',
+              onPressed: _handleAddPathPattern,
+            ),
           CommonPopupMenuItem(
             glyph: AppGlyphs.copy,
             label: appLocalizations.clipboardExport,
@@ -587,30 +663,32 @@ class AccessControlPanel extends StatelessWidget {
               ),
             ],
           ),
-          generateSection(
-            title: appLocalizations.source,
-            items: [
-              ConfigToggleItem(
-                title: (l) => l.systemApp,
-                selector: accessControlStateProvider.select(
-                  (state) => !state.isFilterSystemApp,
+          if (!system.isWindows)
+            generateSection(
+              title: appLocalizations.source,
+              items: [
+                ConfigToggleItem(
+                  title: (l) => l.systemApp,
+                  selector: accessControlStateProvider.select(
+                    (state) => !state.isFilterSystemApp,
+                  ),
+                  onChanged: _writer(
+                    (state, value) =>
+                        state.copyWith(isFilterSystemApp: !value),
+                  ),
                 ),
-                onChanged: _writer(
-                  (state, value) => state.copyWith(isFilterSystemApp: !value),
+                ConfigToggleItem(
+                  title: (l) => l.noNetworkApp,
+                  selector: accessControlStateProvider.select(
+                    (state) => !state.isFilterNonInternetApp,
+                  ),
+                  onChanged: _writer(
+                    (state, value) =>
+                        state.copyWith(isFilterNonInternetApp: !value),
+                  ),
                 ),
-              ),
-              ConfigToggleItem(
-                title: (l) => l.noNetworkApp,
-                selector: accessControlStateProvider.select(
-                  (state) => !state.isFilterNonInternetApp,
-                ),
-                onChanged: _writer(
-                  (state, value) =>
-                      state.copyWith(isFilterNonInternetApp: !value),
-                ),
-              ),
-            ],
-          ),
+              ],
+            ),
         ],
       ),
     );
