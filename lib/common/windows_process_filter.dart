@@ -95,9 +95,13 @@ List<String> applyWindowsProcessAccessPayload({
   }
 
   final modeName = payload['mode']?.toString();
-  final accessMode = AccessControlMode.values.where(
-    (mode) => mode.name == modeName,
-  ).firstOrNull;
+  AccessControlMode? accessMode;
+  for (final mode in AccessControlMode.values) {
+    if (mode.name == modeName) {
+      accessMode = mode;
+      break;
+    }
+  }
   final paths = switch (payload['paths']) {
     final List values => values.map((value) => value.toString()).toList(),
     _ => <String>[],
