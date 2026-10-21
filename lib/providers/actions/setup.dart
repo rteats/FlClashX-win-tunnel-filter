@@ -346,6 +346,11 @@ class SetupAction extends _$SetupAction {
           .read(proxiesActionProvider.notifier)
           .updateCurrentGroupName(GroupName.GLOBAL.name);
     }
+
+    final accessControl = ref.read(vpnSettingProvider).accessControlProps;
+    if (system.isWindows && accessControl.enable && accessControl.hasPackages) {
+      applyProfileDebounce(force: true, silence: true);
+    }
   }
 
   /// For leaving an editor: a profile whose inputs match the config the Core
