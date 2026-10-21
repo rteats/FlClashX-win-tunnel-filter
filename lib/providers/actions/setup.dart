@@ -479,6 +479,15 @@ class SetupAction extends _$SetupAction {
       proxyGroups: proxyGroups,
       rules: rules,
     );
+    if (system.isWindows) {
+      final accessControl = ref.read(vpnSettingProvider).accessControlProps;
+      rawConfig[windowsProcessAccessConfigKey] = {
+        'enabled': accessControl.enable && patchConfig.tun.enable,
+        'mode': accessControl.mode.name,
+        'paths': accessControl.currentList,
+      };
+    }
+
     final res = await makeRealProfileTask(
       MakeRealProfileState(
         rules: rules,
