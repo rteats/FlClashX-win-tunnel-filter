@@ -182,6 +182,12 @@ class _AccessViewState extends ConsumerState<AccessView>
   AccessControlProps _getRealAccessControlProps(
     AccessControlProps accessControl,
   ) {
+    if (system.isWindows) {
+      return accessControl.copyWithNewList(
+        accessControl.currentList.toSet().toList()..sort(),
+      );
+    }
+
     final packages = ref.read(packagesProvider);
     if (packages.isEmpty) {
       return accessControl;
@@ -297,10 +303,33 @@ class _AccessViewState extends ConsumerState<AccessView>
       final data = await Clipboard.getData('text/plain');
       final text = data?.text;
       if (text == null) return;
-      final list = text.split('\n');
+      final list = text
+          .split('\n')
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toSet()
+          .toList();
       ref
           .read(accessControlStateProvider.notifier)
-          .update((state) => state.copyWithNewList(list.toSet().toList()));
+          .update((state) => state.copyWithNewList(list));
+
+      if (system.isWindows) {
+        final current = ref.read(packagesProvider);
+        final known = current.map((item) => item.packageName).toSet();
+        ref.read(packagesProvider.notifier).value = [
+          for (final entry in list)
+            if (!known.contains(entry))
+              Package(
+                packageName: entry,
+                label: windowsProcessEntryLabel(entry),
+                system: false,
+                internet: true,
+                lastUpdateTime: 0,
+              ),
+          ...current,
+        ];
+        _pinList();
+      }
     });
   }
 
