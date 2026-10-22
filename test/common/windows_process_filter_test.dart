@@ -3,6 +3,67 @@ import 'package:fl_clash/enum/enum.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('immutable subscription config accepts injected Windows access settings', () {
+    final subscription = Map<String, dynamic>.unmodifiable({
+      'mode': 'rule',
+      'proxies': [
+        {'name': 'Sweden', 'type': 'ss', 'server': 'example.com'},
+      ],
+      'proxy-groups': [
+        {'name': 'Countries', 'type': 'select', 'proxies': ['Sweden']},
+      ],
+      'rules': ['MATCH,Countries'],
+    });
+
+    final prepared = withWindowsProcessAccessConfig(
+      rawConfig: subscription,
+      enabled: true,
+      accessMode: AccessControlMode.rejectSelected,
+      selectedPaths: [r'C:\Games\Versions\*\Game.exe'],
+    );
+
+    expect(prepared, isNot(same(subscription)));
+    expect(prepared['proxies'], subscription['proxies']);
+    expect(prepared['proxy-groups'], subscription['proxy-groups']);
+    expect(prepared['rules'], subscription['rules']);
+    expect(subscription.containsKey(windowsProcessAccessConfigKey), isFalse);
+    expect(prepared[windowsProcessAccessConfigKey], {
+      'enabled': true,
+      'mode': 'rejectSelected',
+      'paths': [r'C:\Games\Versions\*\Game.exe'],
+    });
+    expect(() => subscription['injected'] = true, throwsUnsupportedError);
+
+    // Only the prepared config is sent to profile generation.
+    final payload = prepared.remove(windowsProcessAccessConfigKey);
+    final rules = applyWindowsProcessAccessPayload(
+      rawConfig: prepared,
+      payload: payload,
+      clashMode: Mode.rule,
+      originalRules: List<String>.from(prepared['rules'] as List),
+    );
+    expect(rules.last, 'MATCH,Countries');
+    expect(rules.first, startsWith('PROCESS-PATH-WILDCARD,'));
+    expect(prepared['proxy-groups'], subscription['proxy-groups']);
+  });
+
+  test('injection copies selected paths instead of sharing mutable state', () {
+    final paths = [r'C:\Games\client.exe'];
+    final subscription = <String, dynamic>{'rules': ['MATCH,Proxy']};
+    final prepared = withWindowsProcessAccessConfig(
+      rawConfig: subscription,
+      enabled: false,
+      accessMode: AccessControlMode.acceptSelected,
+      selectedPaths: paths,
+    );
+    paths.clear();
+
+    expect(subscription.containsKey(windowsProcessAccessConfigKey), isFalse);
+    expect((prepared[windowsProcessAccessConfigKey] as Map)['paths'], [
+      r'C:\Games\client.exe',
+    ]);
+  });
+
   test('exact paths keep PROCESS-PATH matching', () {
     final config = <String, dynamic>{'mode': 'rule'};
     final rules = applyWindowsProcessAccessControl(
