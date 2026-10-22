@@ -3,6 +3,24 @@ import 'package:path/path.dart' as p;
 
 const windowsProcessAccessConfigKey = '__flclashx_windows_process_access';
 
+/// Adds runtime-only Windows access settings without mutating a subscription's
+/// possibly unmodifiable configuration map (e.g. a profile base from Core).
+Map<String, dynamic> withWindowsProcessAccessConfig({
+  required Map<String, dynamic> rawConfig,
+  required bool enabled,
+  required AccessControlMode accessMode,
+  required List<String> selectedPaths,
+}) {
+  return {
+    ...rawConfig,
+    windowsProcessAccessConfigKey: {
+      'enabled': enabled,
+      'mode': accessMode.name,
+      'paths': List<String>.from(selectedPaths),
+    },
+  };
+}
+
 bool isWindowsProcessPattern(String value) =>
     value.contains('*') || value.contains('?');
 
