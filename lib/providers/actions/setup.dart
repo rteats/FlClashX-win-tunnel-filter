@@ -486,11 +486,12 @@ class SetupAction extends _$SetupAction {
     );
     if (system.isWindows) {
       final accessControl = ref.read(vpnSettingProvider).accessControlProps;
-      rawConfig[windowsProcessAccessConfigKey] = {
-        'enabled': accessControl.enable && patchConfig.tun.enable,
-        'mode': accessControl.mode.name,
-        'paths': accessControl.currentList,
-      };
+      rawConfig = withWindowsProcessAccessConfig(
+        rawConfig: rawConfig,
+        enabled: accessControl.enable && patchConfig.tun.enable,
+        accessMode: accessControl.mode,
+        selectedPaths: accessControl.currentList,
+      );
     }
 
     final res = await makeRealProfileTask(
